@@ -28,6 +28,13 @@ mytestnet/**
 node_modules
 cache
 artifacts
+setup.config.json
+
+#contracts/binance-sc
+node_modules
+cache
+artifacts
+setup.config.json
 
 cmd/config.toml
 /cmd/cmd

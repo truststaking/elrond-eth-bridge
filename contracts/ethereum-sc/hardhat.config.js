@@ -31,9 +31,9 @@ task("add-to-whitelist", "Whitelists a new address in the bridge. Requires setup
   })
 
 task("set-quorum", "Updates the quorum on the Bridge contract")
-  .addParam("newQuorumSize", "Integer representing the quorum for a transfer to be considered valid")
+  .addParam("newquorumsize", "Integer representing the quorum for a transfer to be considered valid")
   .setAction(async taskArgs => {
-    const newQuorumSize = taskArgs.newQuorumSize;
+    const newQuorumSize = taskArgs.newquorumsize;
     [adminWallet] = await ethers.getSigners();
     const fs = require('fs');
     config = JSON.parse(fs.readFileSync('setup.config.json', 'utf8'));
@@ -54,7 +54,7 @@ module.exports = {
   solidity: "0.8.5",
   networks: {
     ganache: {
-      url: 'http://127.0.0.1:8545'
+      url: 'http://127.0.0.1:7545'
     },
     rinkeby: {
       url: "https://rinkeby.infura.io/v3/df34d380f59e469c97f1dab44199bca6",

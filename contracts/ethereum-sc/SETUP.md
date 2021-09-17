@@ -68,8 +68,8 @@ e.g.
 ## Whitelisting tokens
 
 Before a depositor can go in and call the `deposit` method with an ERC20 token, that ERC20 contract must be whitelisted.
-For this, there is a hardhat task: `whitelist-token`
-Run it with: `npx hardhat whitelist-token --address <tokenAddress>`
+For this, there is a hardhat task: `add-to-whitelist`
+Run it with: `npx hardhat add-to-whitelist --address <tokenAddress>`
 
 # Emergency shutdown
 
