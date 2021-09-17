@@ -12,9 +12,11 @@ async function main() {
   // manually to make sure everything is compiled
   // await hre.run('compile');
   // We get the contract to deploy
-  [adminWallet, depositor, relayer1] = await hre.ethers.getSigners();
+  [adminWallet, depositor, relayer1, relayer2, relayer3] = await hre.ethers.getSigners();
   console.log('Admin Public Address:', adminWallet.address);
   console.log('Relayer 1 Public Address:', relayer1.address);
+  console.log('Relayer 2 Public Address:', relayer2.address);
+  console.log('Relayer 3 Public Address:', relayer3.address);
   console.log('Depositor Public Address:', depositor.address);
   // Deploy ERC20 tokens
   const AFC = await hre.ethers.getContractFactory("AFCoin");
@@ -23,21 +25,23 @@ async function main() {
   console.log("AFCContract deployed to:", AFCContract.address);
   depositorAFC = AFCContract.connect(depositor);
   await depositorAFC.brrr();
-  console.log("Depositor created AFC: ", await depositorAFC.balanceOf(depositor.address));
+  console.log("Depositor created AFC: ", (await depositorAFC.balanceOf(depositor.address)).toString());
   // Deploy ERC20 Safe
   const ERC20Safe = await hre.ethers.getContractFactory("ERC20Safe");
   const safeContract = await ERC20Safe.deploy();
   await safeContract.deployed();
   console.log("ERC20Safe deployed to:", safeContract.address);
   // Whitelist ERC20 tokens in the ERC20 Safe
-  await safeContract.whitelistToken(AFCContract.address);
+  await safeContract.whitelistToken(AFCContract.address, 0);
   // Deploy Bridge with ERC20 Safe address
   const Bridge = await hre.ethers.getContractFactory("Bridge");
   const relayers = [
     adminWallet.address,
-    relayer1.address
+    relayer1.address,
+    relayer2.address,
+    relayer3.address
   ];
-  const quorum = 1;
+  const quorum = 3;
   const bridgeContract = await Bridge.deploy(relayers, quorum, safeContract.address);
   await bridgeContract.deployed();
   console.log("Bridge deployed to:", bridgeContract.address);
