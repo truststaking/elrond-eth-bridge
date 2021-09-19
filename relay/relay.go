@@ -139,10 +139,10 @@ func (r *Relay) Start(ctx context.Context) error {
 
 	r.timer.Start()
 
-	monitorEth := NewMonitor(r.ethBridge, r.elrondBridge, r.timer, r, "EthToElrond")
-	go monitorEth.Start(ctx)
-	monitorElrond := NewMonitor(r.elrondBridge, r.ethBridge, r.timer, r, "ElrondToEth")
-	go monitorElrond.Start(ctx)
+	monitorEthtoElrond := NewMonitor(r.ethBridge, r.elrondBridge, r.timer, r, "EthToElrond")
+	go monitorEthtoElrond.Start(ctx)
+	monitorElrondToEth := NewMonitor(r.elrondBridge, r.ethBridge, r.timer, r, "ElrondToEth")
+	go monitorElrondToEth.Start(ctx)
 
 	<-ctx.Done()
 	if err := r.Stop(); err != nil {

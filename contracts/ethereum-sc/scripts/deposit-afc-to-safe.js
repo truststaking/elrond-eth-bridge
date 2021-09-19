@@ -27,7 +27,7 @@ async function main() {
   await token.approve(safe.address, 4);
   console.log("Balance for depositor", (await token.balanceOf(depositor.address)).toString());
   console.log("Allowance for depositor", (await token.allowance(depositor.address, safeAddress)).toString());
-  await safe.deposit(token.address, 3, hre.ethers.utils.toUtf8Bytes("erd1rve9evhhfhuw26ctgctzxmevptj43yv800g9603l8vmua2ew7lcq4tp2an")); // Maria
+  await safe.deposit(token.address, 4, hre.ethers.utils.toUtf8Bytes("erd1fmd662htrgt07xxd8me09newa9s0euzvpz3wp0c4pz78f83grt9qm6pn57")); // Trust Maiar
   console.log("Balance for depositor", (await token.balanceOf(depositor.address)).toString());
   console.log("Balance in safe", (await token.balanceOf(safe.address)).toString());
   pendingBatch = await bridge.getNextPendingBatch();

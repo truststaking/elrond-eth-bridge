@@ -12,12 +12,8 @@ async function main() {
   // manually to make sure everything is compiled
   // await hre.run('compile');
   // We get the contract to deploy
-  [adminWallet, depositor, relayer1, relayer2, relayer3] = await hre.ethers.getSigners();
+  [adminWallet, depositor] = await hre.ethers.getSigners();
   console.log('Admin Public Address:', adminWallet.address);
-  console.log('Relayer 1 Public Address:', relayer1.address);
-  console.log('Relayer 2 Public Address:', relayer2.address);
-  console.log('Relayer 3 Public Address:', relayer3.address);
-  console.log('Depositor Public Address:', depositor.address);
   // Deploy ERC20 tokens
   const AFC = await hre.ethers.getContractFactory("AFCoin");
   const AFCContract = await AFC.deploy(100);
@@ -37,11 +33,8 @@ async function main() {
   const Bridge = await hre.ethers.getContractFactory("Bridge");
   const relayers = [
     adminWallet.address,
-    relayer1.address,
-    relayer2.address,
-    relayer3.address
   ];
-  const quorum = 3;
+  const quorum = 1;
   const bridgeContract = await Bridge.deploy(relayers, quorum, safeContract.address);
   await bridgeContract.deployed();
   console.log("Bridge deployed to:", bridgeContract.address);
@@ -53,7 +46,8 @@ async function main() {
   data = {
     erc20Token: AFCContract.address,
     erc20Safe: safeContract.address,
-    bridge: bridgeContract.address
+    bridge: bridgeContract.address, 
+    relayer: adminWallet.address
   };
   fs.writeFileSync(filename, JSON.stringify(data));
 }
