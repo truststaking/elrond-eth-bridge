@@ -41,6 +41,7 @@ task("set-quorum", "Updates the quorum on the Bridge contract")
     const bridgeContractFactory = await ethers.getContractFactory("Bridge");
     const bridge = await bridgeContractFactory.attach(bridgeAddress).connect(adminWallet);
     result = await bridge.setQuorum(newQuorumSize);
+    console.log(result);
     console.log("Quorum updated: ", newQuorumSize);
   })
 
