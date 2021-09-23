@@ -23,13 +23,13 @@ import (
 )
 
 const (
-	signCost              = 35_000_000
-	proposeTransferCost   = 35_000_000
-	proposeTransferTxCost = 15_000_000
-	proposeStatusCost     = 50_000_000
-	performActionCost     = 60_000_000
-	performActionTxCost   = 20_000_000
-	getNextTxBatchCost    = 250_000_000
+	signCost              = 45_000_000
+	proposeTransferCost   = 45_000_000
+	proposeTransferTxCost = 25_000_000
+	proposeStatusCost     = 60_000_000
+	performActionCost     = 70_000_000
+	performActionTxCost   = 30_000_000
+	getNextTxBatchCost    = 260_000_000
 )
 
 const (
@@ -416,6 +416,11 @@ func (c *client) IsWhitelisted(address string) bool {
 	return role == canProposeAndSign
 }
 
+// GetHexWalletAddress returns the wallet address as a hex string
+func (c *client) GetHexWalletAddress() string {
+	return hex.EncodeToString(c.address.AddressBytes())
+}
+
 func (c *client) executeQuery(valueRequest *data.VmValueRequest) ([][]byte, error) {
 	response, err := c.proxy.ExecuteVMQuery(valueRequest)
 	if err != nil {
@@ -562,11 +567,6 @@ func (c *client) getNextPendingBatch() (string, error) {
 		Func("getNextTransactionBatch")
 
 	return c.sendTransaction(builder, getNextTxBatchCost)
-}
-
-// Address returns the current address held by the Client
-func (c *client) Address() core.AddressHandler {
-	return c.address
 }
 
 // Close will close any started go routines. It returns nil.
