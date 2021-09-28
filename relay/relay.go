@@ -39,6 +39,11 @@ type Peers []core.PeerID
 
 type Signatures map[core.PeerID][]byte
 
+type Topology struct {
+	Peers      Peers
+	Signatures Signatures
+}
+
 type Timer interface {
 	After(d time.Duration) <-chan time.Time
 	NowUnix() int64
@@ -168,10 +173,16 @@ func (r *Relay) Stop() error {
 // TopologyProvider
 
 func (r *Relay) PeerCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	return len(r.peers)
 }
 
 func (r *Relay) AmITheLeader() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if len(r.peers) == 0 {
 		return false
 	} else {
@@ -183,6 +194,9 @@ func (r *Relay) AmITheLeader() bool {
 }
 
 func (r *Relay) Clean() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	r.signatures = make(Signatures)
 }
 
@@ -228,7 +242,8 @@ func (r *Relay) broadcastTopology(toPeer core.PeerID) error {
 
 	var data bytes.Buffer
 	enc := gob.NewEncoder(&data)
-	if err := enc.Encode(r.peers); err != nil {
+	topology := Topology{Peers: r.peers, Signatures: r.signatures}
+	if err := enc.Encode(topology); err != nil {
 		return err
 	}
 
@@ -243,7 +258,6 @@ func (r *Relay) setTopology(data []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// TODO: ignore if peers are already set
 	if len(r.peers) > 1 {
 		// ignore this call if we already have peers
 		// TODO: find a better way here
@@ -251,11 +265,12 @@ func (r *Relay) setTopology(data []byte) error {
 	}
 
 	dec := gob.NewDecoder(bytes.NewReader(data))
-	var topology Peers
+	var topology Topology
 	if err := dec.Decode(&topology); err != nil {
 		return err
 	}
-	r.peers = topology
+	r.peers = topology.Peers
+	r.signatures = topology.Signatures
 
 	return nil
 }
@@ -264,19 +279,20 @@ func (r *Relay) addPeer(peerID core.PeerID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// TODO: account for peers that rejoin
 	if len(r.peers) == 0 || r.peers[len(r.peers)-1] < peerID {
 		r.peers = append(r.peers, peerID)
 		return
 	}
 
-	// TODO: can optimize via binary search
 	for index, peer := range r.peers {
-		if peer > peerID {
+		switch {
+		case peer == peerID:
+			return
+		case peer > peerID:
 			r.peers = append(r.peers, "")
 			copy(r.peers[index+1:], r.peers[index:])
 			r.peers[index] = peerID
-			break
+			return
 		}
 	}
 }
@@ -330,6 +346,9 @@ func (r *Relay) join(ctx context.Context) {
 }
 
 func (r *Relay) addSignatureForPeer(peerID core.PeerID, signature []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	r.signatures[peerID] = signature
 }
 

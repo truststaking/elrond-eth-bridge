@@ -101,7 +101,6 @@ func (m *Monitor) getPending(ctx context.Context, ch chan state) {
 			ch <- stop
 		}
 	} else {
-		m.topologyProvider.Clean()
 		ch <- proposeTransfer
 	}
 }
@@ -225,7 +224,7 @@ func (m *Monitor) waitForSetStatusProposal(ctx context.Context, ch chan state) {
 // helpers
 
 func (m *Monitor) wasQuorumReached(quorum *big.Int, count *big.Int) bool {
-	return quorum.Cmp(count) == 0 || quorum.Cmp(count) == -1
+	return quorum.Cmp(count) <= 0
 }
 
 func (m *Monitor) wasExecuted(ctx context.Context) bool {
@@ -233,6 +232,7 @@ func (m *Monitor) wasExecuted(ctx context.Context) bool {
 }
 
 func (m *Monitor) executed(_ context.Context, ch chan state) {
+	m.topologyProvider.Clean()
 	m.pendingBatch.SetStatusOnAllTransactions(bridge.Executed, nil)
 
 	switch m.executingBridge {
