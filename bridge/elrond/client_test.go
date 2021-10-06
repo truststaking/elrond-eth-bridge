@@ -11,8 +11,8 @@ import (
 	"github.com/ElrondNetwork/elrond-eth-bridge/bridge"
 	"github.com/ElrondNetwork/elrond-eth-bridge/bridge/elrond/mock"
 	"github.com/ElrondNetwork/elrond-eth-bridge/testHelpers"
+	"github.com/ElrondNetwork/elrond-go-core/data/vm"
 	logger "github.com/ElrondNetwork/elrond-go-logger"
-	"github.com/ElrondNetwork/elrond-go/data/vm"
 	"github.com/ElrondNetwork/elrond-sdk-erdgo/core"
 	"github.com/ElrondNetwork/elrond-sdk-erdgo/data"
 	"github.com/ElrondNetwork/elrond-sdk-erdgo/interactors"
@@ -92,8 +92,8 @@ func TestClient_PollsNonce(t *testing.T) {
 	// the go routine should have stopped, preventing calls to the proxy
 	time.Sleep(time.Second*3 + time.Millisecond*500)
 
-	assert.Equal(t, uint64(3), atomic.LoadUint64(&numCalled))
-	assert.Equal(t, uint64(3), atomic.LoadUint64(&c.nonce))
+	assert.Equal(t, uint64(4), atomic.LoadUint64(&numCalled))
+	assert.Equal(t, uint64(4), atomic.LoadUint64(&c.nonce))
 }
 
 func TestGetPending(t *testing.T) {
@@ -330,6 +330,7 @@ func TestExecute(t *testing.T) {
 
 	assert.Equal(t, expectedTxHash, hash)
 	assert.Equal(t, uint64(70_000_000+len(batch.Transactions)*30_000_000), proxy.lastTransaction.GasLimit)
+	assert.Equal(t, uint64(43), c.nonce)
 }
 
 func TestWasProposedTransfer(t *testing.T) {
@@ -613,6 +614,7 @@ func buildTestClient(proxy *testProxy) (*client, error) {
 	c := &client{
 		log:           logger.GetOrCreate("testHelpers"),
 		proxy:         proxy,
+		nonce:         42,
 		bridgeAddress: "",
 		privateKey:    privateKey,
 		address:       address,

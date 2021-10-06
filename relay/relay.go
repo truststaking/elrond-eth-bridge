@@ -17,24 +17,32 @@ import (
 
 	"github.com/ElrondNetwork/elrond-eth-bridge/bridge"
 	"github.com/ElrondNetwork/elrond-eth-bridge/bridge/elrond"
+	"github.com/ElrondNetwork/elrond-go-core/core"
+	factoryMarshalizer "github.com/ElrondNetwork/elrond-go-core/marshal/factory"
 	logger "github.com/ElrondNetwork/elrond-go-logger"
 	"github.com/ElrondNetwork/elrond-go/config"
-	"github.com/ElrondNetwork/elrond-go/core"
-	factoryMarshalizer "github.com/ElrondNetwork/elrond-go/marshal/factory"
+	"github.com/ElrondNetwork/elrond-go/epochStart/bootstrap/disabled"
 	"github.com/ElrondNetwork/elrond-go/p2p"
 	"github.com/ElrondNetwork/elrond-go/p2p/libp2p"
 )
 
 const (
-	JoinTopicName    = "join/1"
-	PrivateTopicName = "private/1"
-	SignTopicName    = "sign/1"
-	Timeout          = 40 * time.Second
+	joinTopicName            = "join/1"
+	privateTopicName         = "private/1"
+	signTopicName            = "sign/1"
+	timeout                  = 40 * time.Second
+	defaultTopicIdentifier   = "default"
+	p2pPeerNetworkDiscoverer = "optimized"
 )
 
 type Peers []core.PeerID
 
 type Signatures map[core.PeerID][]byte
+
+type Topology struct {
+	Peers      Peers
+	Signatures Signatures
+}
 
 type Timer interface {
 	After(d time.Duration) <-chan time.Time
@@ -73,7 +81,7 @@ type NetMessenger interface {
 	ID() core.PeerID
 	Bootstrap() error
 	Addresses() []string
-	RegisterMessageProcessor(string, p2p.MessageProcessor) error
+	RegisterMessageProcessor(topic string, identifier string, processor p2p.MessageProcessor) error
 	HasTopic(name string) bool
 	CreateTopic(name string, createChannelForTopic bool) error
 	Broadcast(topic string, buff []byte)
@@ -95,6 +103,7 @@ type Relay struct {
 
 	roleProvider                bridge.RoleProvider
 	elrondWalletAddressProvider bridge.WalletAddressProvider
+	quorumProvider              bridge.QuorumProvider
 }
 
 func NewRelay(config *Config, name string) (*Relay, error) {
@@ -118,6 +127,7 @@ func NewRelay(config *Config, name string) (*Relay, error) {
 		return nil, err
 	}
 	relay.ethBridge = ethBridge
+	relay.quorumProvider = ethBridge
 
 	messenger, err := buildNetMessenger(config.P2P)
 	if err != nil {
@@ -140,10 +150,10 @@ func (r *Relay) Start(ctx context.Context) error {
 
 	r.timer.Start()
 
-	monitorEthtoElrond := NewMonitor(r.ethBridge, r.elrondBridge, r.timer, r, "EthToElrond")
-	go monitorEthtoElrond.Start(ctx)
-	monitorElrondToEth := NewMonitor(r.elrondBridge, r.ethBridge, r.timer, r, "ElrondToEth")
-	go monitorElrondToEth.Start(ctx)
+	monitorEth := NewMonitor(r.ethBridge, r.elrondBridge, r.timer, r, r.quorumProvider, "EthToElrond")
+	go monitorEth.Start(ctx)
+	monitorElrond := NewMonitor(r.elrondBridge, r.ethBridge, r.timer, r, r.quorumProvider, "ElrondToEth")
+	go monitorElrond.Start(ctx)
 
 	<-ctx.Done()
 	if err := r.Stop(); err != nil {
@@ -163,21 +173,30 @@ func (r *Relay) Stop() error {
 // TopologyProvider
 
 func (r *Relay) PeerCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	return len(r.peers)
 }
 
 func (r *Relay) AmITheLeader() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if len(r.peers) == 0 {
 		return false
 	} else {
 		numberOfPeers := int64(len(r.peers))
-		index := (r.timer.NowUnix() / int64(Timeout.Seconds())) % numberOfPeers
+		index := (r.timer.NowUnix() / int64(timeout.Seconds())) % numberOfPeers
 
 		return r.peers[index] == r.messenger.ID()
 	}
 }
 
 func (r *Relay) Clean() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	r.signatures = make(Signatures)
 }
 
@@ -187,7 +206,7 @@ func (r *Relay) ProcessReceivedMessage(message p2p.MessageP2P, _ core.PeerID) er
 	r.log.Info(fmt.Sprintf("Got message on topic %q", message.Topic()))
 
 	switch message.Topic() {
-	case JoinTopicName:
+	case joinTopicName:
 		elrondPublicAddress := string(message.Data())
 		if !r.roleProvider.IsWhitelisted(elrondPublicAddress) {
 			r.log.Error(fmt.Sprintf("A peer with address %q tryed to join but is not whitelisted", elrondPublicAddress))
@@ -198,9 +217,9 @@ func (r *Relay) ProcessReceivedMessage(message p2p.MessageP2P, _ core.PeerID) er
 		if err := r.broadcastTopology(message.Peer()); err != nil {
 			r.log.Error(err.Error())
 		}
-	case SignTopicName:
+	case signTopicName:
 		r.addSignatureForPeer(message.Peer(), message.Data())
-	case PrivateTopicName:
+	case privateTopicName:
 		if err := r.setTopology(message.Data()); err != nil {
 			r.log.Error(err.Error())
 		}
@@ -223,11 +242,12 @@ func (r *Relay) broadcastTopology(toPeer core.PeerID) error {
 
 	var data bytes.Buffer
 	enc := gob.NewEncoder(&data)
-	if err := enc.Encode(r.peers); err != nil {
+	topology := Topology{Peers: r.peers, Signatures: r.signatures}
+	if err := enc.Encode(topology); err != nil {
 		return err
 	}
 
-	if err := r.messenger.SendToConnectedPeer(PrivateTopicName, data.Bytes(), toPeer); err != nil {
+	if err := r.messenger.SendToConnectedPeer(privateTopicName, data.Bytes(), toPeer); err != nil {
 		return err
 	}
 
@@ -238,7 +258,6 @@ func (r *Relay) setTopology(data []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// TODO: ignore if peers are already set
 	if len(r.peers) > 1 {
 		// ignore this call if we already have peers
 		// TODO: find a better way here
@@ -246,11 +265,12 @@ func (r *Relay) setTopology(data []byte) error {
 	}
 
 	dec := gob.NewDecoder(bytes.NewReader(data))
-	var topology Peers
+	var topology Topology
 	if err := dec.Decode(&topology); err != nil {
 		return err
 	}
-	r.peers = topology
+	r.peers = topology.Peers
+	r.signatures = topology.Signatures
 
 	return nil
 }
@@ -259,19 +279,20 @@ func (r *Relay) addPeer(peerID core.PeerID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// TODO: account for peers that rejoin
 	if len(r.peers) == 0 || r.peers[len(r.peers)-1] < peerID {
 		r.peers = append(r.peers, peerID)
 		return
 	}
 
-	// TODO: can optimize via binary search
 	for index, peer := range r.peers {
-		if peer > peerID {
+		switch {
+		case peer == peerID:
+			return
+		case peer > peerID:
 			r.peers = append(r.peers, "")
 			copy(r.peers[index+1:], r.peers[index:])
 			r.peers[index] = peerID
-			break
+			return
 		}
 	}
 }
@@ -288,7 +309,7 @@ func (r *Relay) Signatures() [][]byte {
 }
 
 func (r *Relay) SendSignature(signature []byte) {
-	r.messenger.Broadcast(SignTopicName, signature)
+	r.messenger.Broadcast(signTopicName, signature)
 }
 
 // Helpers
@@ -319,17 +340,20 @@ func (r *Relay) join(ctx context.Context) {
 	select {
 	case <-r.timer.After(time.Duration(v) * time.Second):
 		r.log.Debug(fmt.Sprintf("Joining with address %s", r.elrondWalletAddressProvider.GetHexWalletAddress()))
-		r.messenger.Broadcast(JoinTopicName, []byte(r.elrondWalletAddressProvider.GetHexWalletAddress()))
+		r.messenger.Broadcast(joinTopicName, []byte(r.elrondWalletAddressProvider.GetHexWalletAddress()))
 	case <-ctx.Done():
 	}
 }
 
 func (r *Relay) addSignatureForPeer(peerID core.PeerID, signature []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	r.signatures[peerID] = signature
 }
 
 func (r *Relay) registerTopicProcessors() error {
-	topics := []string{JoinTopicName, PrivateTopicName, SignTopicName}
+	topics := []string{joinTopicName, privateTopicName, signTopicName}
 	for _, topic := range topics {
 		if !r.messenger.HasTopic(topic) {
 			if err := r.messenger.CreateTopic(topic, true); err != nil {
@@ -338,7 +362,7 @@ func (r *Relay) registerTopicProcessors() error {
 		}
 
 		r.log.Info(fmt.Sprintf("Registered on topic %q", topic))
-		if err := r.messenger.RegisterMessageProcessor(topic, r); err != nil {
+		if err := r.messenger.RegisterMessageProcessor(topic, defaultTopicIdentifier, r); err != nil {
 			return err
 		}
 	}
@@ -365,6 +389,7 @@ func buildNetMessenger(cfg ConfigP2P) (NetMessenger, error) {
 		InitialPeerList:                  cfg.InitialPeerList,
 		BucketSize:                       0,
 		RoutingTableRefreshIntervalInSec: 300,
+		Type:                             p2pPeerNetworkDiscoverer,
 	}
 
 	p2pConfig := config.P2PConfig{
@@ -381,10 +406,12 @@ func buildNetMessenger(cfg ConfigP2P) (NetMessenger, error) {
 	}
 
 	args := libp2p.ArgsNetworkMessenger{
-		Marshalizer:   internalMarshalizer,
-		ListenAddress: libp2p.ListenAddrWithIp4AndTcp,
-		P2pConfig:     p2pConfig,
-		SyncTimer:     &libp2p.LocalSyncTimer{},
+		Marshalizer:          internalMarshalizer,
+		ListenAddress:        libp2p.ListenAddrWithIp4AndTcp,
+		P2pConfig:            p2pConfig,
+		SyncTimer:            &libp2p.LocalSyncTimer{},
+		PreferredPeersHolder: disabled.NewPreferredPeersHolder(),
+		NodeOperationMode:    p2p.NormalOperation,
 	}
 
 	messenger, err := libp2p.NewNetworkMessenger(args)
